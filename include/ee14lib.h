@@ -44,6 +44,9 @@ uint32_t timer_get_count(TIM_TypeDef* const timer);
 EE14Lib_Err adc_config_single(const EE14Lib_Pin pin);
 unsigned int adc_read_single(void);
 
+EE14Lib_Err dac_config_single(int alignment_mode);
+EE14Lib_Err dac_write(int val);
+
 void host_serial_init(const unsigned int baud);
 void serial_write(USART_TypeDef *USARTx, const char *buffer, int len);
 int serial_write_nonblocking(USART_TypeDef *USARTx, const char *buffer, int len);

@@ -15,7 +15,7 @@ volatile uint32_t *data_ptr;
 // DAC is left disabled, need to call a config function before using
 // Can be called at any time
 // No return no arguments
-void dac_wakeup(void){
+static void dac_wakeup(void){
     // Mirrors convention from ADC.C to disable the DAC before enabling the clock on the DAC
     DAC1->CR &= ~DAC_CR_EN1;  
 
@@ -36,7 +36,7 @@ void dac_wakeup(void){
 }
 
 // Configures the DAC on Channel 1 by setting the data register global var
-// NOT DMA
+// NOT DMA, Wakes up DAC is needed
 // Returns error signal
 // Argument: integer (expects 0-2) 
 //    0: 8-bit right alignment
