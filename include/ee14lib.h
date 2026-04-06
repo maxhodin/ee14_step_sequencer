@@ -5,6 +5,7 @@
 
 #include "stm32l432xx.h"
 #include <stdbool.h>
+#include <stdio.h>
 
 // Pin names on the Nucleo silkscreen, copied from the Arduino Nano form factor
 // VCP_RX is hard-wired to the host bridge chip, not broken out to the headers.
@@ -32,24 +33,41 @@ typedef int EE14Lib_Err;
 #define PULL_DOWN 0b10
 // Both on is an error
 
+// GPIO output type modes
+#define PUSH_PULL 0b0
+#define OPEN_DRAIN 0b1
+
+// GPIO output speed types
+#define LOW_SPD 0b00
+#define MED_SPD 0b01
+#define HI_SPD  0b10
+#define V_HI_SPD 0b11
+
 EE14Lib_Err gpio_config_mode(EE14Lib_Pin pin, unsigned int mode);
 EE14Lib_Err gpio_config_pullup(EE14Lib_Pin pin, unsigned int mode);
 EE14Lib_Err gpio_config_alternate_function(EE14Lib_Pin pin, unsigned int function);
 void gpio_write(EE14Lib_Pin pin, bool value);
 bool gpio_read(EE14Lib_Pin pin);
 
+EE14Lib_Err timer_config_pwm(TIM_TypeDef* const timer, const unsigned int freq_hz);
+EE14Lib_Err timer_config_channel_pwm(TIM_TypeDef* const timer, const EE14Lib_Pin pin, const unsigned int duty);
 EE14Lib_Err timer_config_freerun(TIM_TypeDef* const timer, const unsigned int prescaler);
 uint32_t timer_get_count(TIM_TypeDef* const timer);
 
+void adc_init(void);
 EE14Lib_Err adc_config_single(const EE14Lib_Pin pin);
 unsigned int adc_read_single(void);
 
 EE14Lib_Err dac_config_single(int alignment_mode);
 EE14Lib_Err dac_write(int val);
 
+
 void host_serial_init(const unsigned int baud);
 void serial_write(USART_TypeDef *USARTx, const char *buffer, int len);
 int serial_write_nonblocking(USART_TypeDef *USARTx, const char *buffer, int len);
 char serial_read(USART_TypeDef *USARTx);
 
+EE14Lib_Err i2c_init(I2C_TypeDef* i2c, EE14Lib_Pin scl, EE14Lib_Pin sda);
+bool i2c_write(I2C_TypeDef* i2c, unsigned char device_address, unsigned char* data, unsigned char len);
+bool i2c_read(I2C_TypeDef* i2c, unsigned char device_address, unsigned char* data, unsigned char len);
 #endif

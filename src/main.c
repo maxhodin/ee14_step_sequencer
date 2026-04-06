@@ -10,6 +10,7 @@
 // Returns 8-bit result where the MSB is 2^-1
 // Argument: 32 bit angle theta
 uint8_t pseudo_sine(uint32_t theta){
+    //roughly 55 clock cycles per floating point multiply using software floats
     float theta_sq = (theta * theta);
     float temp = -inv_7fac * theta_sq;
     temp = theta_sq * (inv_5fac + temp);
