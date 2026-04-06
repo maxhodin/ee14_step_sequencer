@@ -38,12 +38,9 @@ EE14Lib_Err gpio_config_alternate_function(EE14Lib_Pin pin, unsigned int functio
 void gpio_write(EE14Lib_Pin pin, bool value);
 bool gpio_read(EE14Lib_Pin pin);
 
-EE14Lib_Err timer_config_pwm(TIM_TypeDef* const timer, const unsigned int freq_hz);
-EE14Lib_Err timer_config_channel_pwm(TIM_TypeDef* const timer, const EE14Lib_Pin pin, const unsigned int duty);
 EE14Lib_Err timer_config_freerun(TIM_TypeDef* const timer, const unsigned int prescaler);
 uint32_t timer_get_count(TIM_TypeDef* const timer);
 
-void adc_init(void);
 EE14Lib_Err adc_config_single(const EE14Lib_Pin pin);
 unsigned int adc_read_single(void);
 
