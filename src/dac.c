@@ -73,3 +73,22 @@ EE14Lib_Err dac_config_single(int alignment_mode){
     
     return EE14Lib_Err_OK;
 }
+
+// Writes value to the DAC to be turned into an analog voltage
+// Returns error signal
+// Arugment: 
+//  integer val: should be [0,255] for 8-bit mode or [0,4096] for 12-bit mode
+EE14Lib_Err dac_write(int val){
+    if(val > 255){ // val is not 8 bits but config is
+        if(data_ptr == &DAC1->DHR8RD){
+            return EE14Lib_ERR_INVALID_CONFIG;
+        }
+    }
+    else if(val > 4096){ // val is not 12 bits
+        return EE14Lib_ERR_INVALID_CONFIG;
+    }
+    
+    //write val to data_ptr's register
+    *data_ptr = val;
+    return EE14Lib_Err_OK;
+}
