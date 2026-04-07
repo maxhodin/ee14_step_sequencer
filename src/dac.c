@@ -22,13 +22,13 @@ static void dac_wakeup(void){
     // Enable the clock of DAC
     // RCC_AHB1ENR is the AHB1 peripheral-clock-enable register. 
     // DAC1EN enables the clock to the only DAC on the chip.
-    RCC->AHB1ENR  |= RCC_APB1ENR1_DAC1EN;
+    RCC->APB1ENR1  |= RCC_APB1ENR1_DAC1EN;
 
     // RCC_AHB2RSTR is the AHB2 peripheral-reset register.
     // Put the ADC into reset, wait, and take it out, using RCC_AHB2RSTR.ADCRST
-    RCC->AHB1RSTR    |=  RCC_APB1RSTR1_DAC1RST; // Go into reset.
+    RCC->APB1RSTR1    |=  RCC_APB1RSTR1_DAC1RST; // Go into reset.
     for (volatile int i=0; i<5; ++i) {}       // Wait till we're really in reset.
-    RCC->AHB1RSTR    &= ~RCC_APB1RSTR1_DAC1RST; // Come out of reset.
+    RCC->APB1RSTR1    &= ~RCC_APB1RSTR1_DAC1RST; // Come out of reset.
     for (volatile int i=0; i<5; ++i) {}       // Wait till we're really out of reset
 
     // DAC starts in STOP mode after reset
@@ -51,15 +51,19 @@ EE14Lib_Err dac_config_single(int alignment_mode){
     // manually disable the DAC as we change settings
     DAC1->CR &= ~DAC_CR_EN1;
 
+    //Set the GPIO port mode to analog to allow analogness
+    gpio_config_mode(A3,ANALOG);
+    gpio_config_pullup(A3, PULL_OFF);
+
     // set alignment mode and store result in global scope
     if(alignment_mode==0){
-        data_ptr = &DAC1->DHR8RD;
+        data_ptr = &DAC1->DHR8R1;
     }
     else if(alignment_mode==1){
-        data_ptr = &DAC1->DHR12LD;
+        data_ptr = &DAC1->DHR12L1;
     }
     else if(alignment_mode==2){
-        data_ptr = &DAC1->DHR12RD;
+        data_ptr = &DAC1->DHR12R1;
     }
     else{
        return EE14Lib_ERR_INVALID_CONFIG; 
@@ -67,6 +71,9 @@ EE14Lib_Err dac_config_single(int alignment_mode){
 
     // DAC Channel 1 is connected to external pin with buffer enabled in normal mode
     DAC1->MCR &= 0b000;
+
+    // Turns triggers off
+    DAC1->CR &= ~DAC_CR_TEN1;
 
     //enable the DAC
     DAC1->CR |= DAC_CR_EN1;
@@ -80,7 +87,7 @@ EE14Lib_Err dac_config_single(int alignment_mode){
 //  integer val: should be [0,255] for 8-bit mode or [0,4096] for 12-bit mode
 EE14Lib_Err dac_write(int val){
     if(val > 255){ // val is not 8 bits but config is
-        if(data_ptr == &DAC1->DHR8RD){
+        if(data_ptr == &DAC1->DHR8R1){
             return EE14Lib_ERR_INVALID_CONFIG;
         }
     }
