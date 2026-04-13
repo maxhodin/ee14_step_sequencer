@@ -1,7 +1,8 @@
 #include "ee14lib.h"
 #include <string.h>
 
-freq = 440; // frequqency of sound in Hz
+#define freq 440 // frequqency of sound in Hz
+#define per (1/freq)// period of waveform in s
 
 // Lookup table for waveforms
 
@@ -117,6 +118,15 @@ int _write(int file, char *data, int len) {
 }
 
 int main(){
+    //7:4 == 1011 for maximum 48 MHz
+    uint32_t oldClk = RCC->CR;
+    oldClk |= 0b1011 << 4;
+    oldClk &= ~(0b100 << 4);
+    //CRITICAL SECTION 
+    __disable_irq();
+    RCC->CR = oldClk;
+    __enable_irq();
+    
     host_serial_init(9600);
     dac_config_single(0);
     // About 2 us to get SINE and about 5 us to write to DAC
@@ -124,11 +134,15 @@ int main(){
 
     // if we want to achieve higher than 820 Hz, skip every other sample. 
     // for exmample, i < 128 and sine_LUT[2*i]
+
+    // need to make this work outside of the main loop. 
+    // DMA probably necessary.
+
+
+    
     while(1){
-        for(int i=0; i<256; i++){
-            uint8_t val = sine_LUT[i];
-            dac_write(val);
-        }
+
+
     }
     return 0;
 }
