@@ -129,20 +129,31 @@ int main(){
     
     host_serial_init(9600);
     dac_config_single(0);
-    // About 2 us to get SINE and about 5 us to write to DAC
-    // About 820 Hz sine @ 209.92 kHz polling rate max
+
+
+    // This is a simple part which will need to be called more often
+    // if the frequency changes throughout the code
+    // this value should be between 1 and 4 or so
+    uint8_t freq_prescalar = freq / 172; 
+    if (freq_prescalar==0) freq_prescalar = 1;
+    int len = 256/freq_prescalar;
 
     // if we want to achieve higher than 820 Hz, skip every other sample. 
     // for exmample, i < 128 and sine_LUT[2*i]
 
     // need to make this work outside of the main loop. 
     // DMA probably necessary.
-
+    timer_config_freerun(TIM2,47); // count in microseconds
 
     
     while(1){
-
-
+        // Maximum frequency =~ (1/256*duration) duration is 9/47 us, so max freq = 20kHz
+        for(int i=0;i<len;i++){
+             timer_reset_freerun(TIM2); //reset to 0
+             dac_write(sine_LUT[freq_prescalar * i]);
+             while(timer_get_count(TIM2) < (per*1000000 / 256)) {} // spin until next write due
+        }
+        
     }
     return 0;
 }
