@@ -53,6 +53,7 @@ EE14Lib_Err timer_config_pwm(TIM_TypeDef* const timer, const unsigned int freq_h
 EE14Lib_Err timer_config_channel_pwm(TIM_TypeDef* const timer, const EE14Lib_Pin pin, const unsigned int duty);
 EE14Lib_Err timer_config_freerun(TIM_TypeDef* const timer, const unsigned int prescaler);
 uint32_t timer_get_count(TIM_TypeDef* const timer);
+EE14Lib_Err timer_reset_freerun(TIM_TypeDef* const timer);
 
 void adc_init(void);
 EE14Lib_Err adc_config_single(const EE14Lib_Pin pin);

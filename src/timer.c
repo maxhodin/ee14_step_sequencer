@@ -38,7 +38,19 @@ EE14Lib_Err timer_config_freerun(TIM_TypeDef* const timer, const unsigned int pr
     return EE14Lib_Err_OK;
 }
 
+/* Reset the timer's value quickly to 0
+Assumes timer is enabled
+ */
+EE14Lib_Err timer_reset_freerun(TIM_TypeDef* const timer)
+{
+    // Force an update event so the prescaler gets loaded and timer resets
+    timer->EGR |= TIM_EGR_UG;
+
+    return EE14Lib_Err_OK;
+}
+
 uint32_t timer_get_count(TIM_TypeDef* const timer)
 {
     return timer->CNT;
 }
+
