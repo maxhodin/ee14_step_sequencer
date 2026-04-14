@@ -2,7 +2,6 @@
 #include <string.h>
 
 #define freq 440 // frequqency of sound in Hz
-#define per (1/freq)// period of waveform in s
 
 // Lookup table for waveforms
 
@@ -143,15 +142,21 @@ int main(){
 
     // need to make this work outside of the main loop. 
     // DMA probably necessary.
-    timer_config_freerun(TIM2,47); // count in microseconds
+    timer_config_freerun(TIM2,47); // count in tens of microseconds
 
-    
+    // microseconds per sample
+    uint32_t sample_delay_us  = 1000000UL / (256*(uint32_t)freq);
+    uint64_t clk_freq = SystemCoreClock;
+    uint64_t temp = (uint64_t) sample_delay_us * clk_freq;
+    uint16_t sample_delay_clk_periods = (uint16_t) (temp / ( (uint64_t) (48) * 1000000ULL));
+    if (sample_delay_clk_periods == 0) sample_delay_clk_periods = 1;
+
     while(1){
         // Maximum frequency =~ (1/256*duration) duration is 9/47 us, so max freq = 20kHz
         for(int i=0;i<len;i++){
-             timer_reset_freerun(TIM2); //reset to 0
+             uint16_t t0 = timer_get_count(TIM2); 
              dac_write(sine_LUT[freq_prescalar * i]);
-             while(timer_get_count(TIM2) < (per*1000000 / 256)) {} // spin until next write due
+             while((uint16_t)(timer_get_count(TIM2) - t0) < sample_delay_clk_periods) {} // spin until next write due
         }
         
     }
