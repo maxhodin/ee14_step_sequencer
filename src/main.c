@@ -1,7 +1,9 @@
 #include "ee14lib.h"
 #include <string.h>
 
-#define freq 440 // frequqency of sound in Hz
+#define freq 180 // frequqency of sound in Hz
+
+// werid bug, it's only producing multiples of 320 Hz
 
 // Lookup table for waveforms
 
@@ -129,36 +131,14 @@ int main(){
     host_serial_init(9600);
     dac_config_single(0);
 
+    dma_dac_config();
+    dma_set_memaddr(sine_LUT);
 
-    // This is a simple part which will need to be called more often
-    // if the frequency changes throughout the code
-    // this value should be between 1 and 4 or so
-    uint8_t freq_prescalar = freq / 172; 
-    if (freq_prescalar==0) freq_prescalar = 1;
-    int len = 256/freq_prescalar;
+    // Set timer to reload every 1088 clk cycles
+    // Reloading corresponding to 41.118 kHz
+    timer_config_freerun(TIM2,1); // count in two clock cycle ticks
+    timer_set_ARR(TIM2, 543); // 
 
-    // if we want to achieve higher than 820 Hz, skip every other sample. 
-    // for exmample, i < 128 and sine_LUT[2*i]
-
-    // need to make this work outside of the main loop. 
-    // DMA probably necessary.
-    timer_config_freerun(TIM2,47); // count in tens of microseconds
-
-    // microseconds per sample
-    uint32_t sample_delay_us  = 1000000UL / (256*(uint32_t)freq);
-    uint64_t clk_freq = SystemCoreClock;
-    uint64_t temp = (uint64_t) sample_delay_us * clk_freq;
-    uint16_t sample_delay_clk_periods = (uint16_t) (temp / ( (uint64_t) (48) * 1000000ULL));
-    if (sample_delay_clk_periods == 0) sample_delay_clk_periods = 1;
-
-    while(1){
-        // Maximum frequency =~ (1/256*duration) duration is 9/47 us, so max freq = 20kHz
-        for(int i=0;i<len;i++){
-             uint16_t t0 = timer_get_count(TIM2); 
-             dac_write(sine_LUT[freq_prescalar * i]);
-             while((uint16_t)(timer_get_count(TIM2) - t0) < sample_delay_clk_periods) {} // spin until next write due
-        }
-        
-    }
+    while(1){}
     return 0;
 }

@@ -54,6 +54,7 @@ EE14Lib_Err timer_config_channel_pwm(TIM_TypeDef* const timer, const EE14Lib_Pin
 EE14Lib_Err timer_config_freerun(TIM_TypeDef* const timer, const unsigned int prescaler);
 uint32_t timer_get_count(TIM_TypeDef* const timer);
 EE14Lib_Err timer_reset_freerun(TIM_TypeDef* const timer);
+EE14Lib_Err timer_set_ARR(TIM_TypeDef* const timer, uint16_t reload);
 
 void adc_init(void);
 EE14Lib_Err adc_config_single(const EE14Lib_Pin pin);
@@ -62,6 +63,8 @@ unsigned int adc_read_single(void);
 EE14Lib_Err dac_config_single(int alignment_mode);
 EE14Lib_Err dac_write(int val);
 
+E14Lib_Err dma_dac_config();
+EE14Lib_Err dma_set_memaddr(uint8_t *buffer);
 
 void host_serial_init(const unsigned int baud);
 void serial_write(USART_TypeDef *USARTx, const char *buffer, int len);

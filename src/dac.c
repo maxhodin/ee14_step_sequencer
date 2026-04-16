@@ -72,8 +72,15 @@ EE14Lib_Err dac_config_single(int alignment_mode){
     // DAC Channel 1 is connected to external pin with buffer enabled in normal mode
     DAC1->MCR &= 0b000;
 
-    // Turns triggers off
-    DAC1->CR &= ~DAC_CR_TEN1;
+    // enable DMA request
+    DAC1->CR |= DAC_CR_DMAEN1; 
+
+    // Turns triggers on 
+    DAC1->CR |= DAC_CR_TEN1;
+
+    //100 in TSEL[2:0] is TIM2 trigger
+    DAC1->CR |= 1 << 5;
+    DAC1->CR &= 0b00 << 3; 
 
     //enable the DAC
     DAC1->CR |= DAC_CR_EN1;

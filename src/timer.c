@@ -25,6 +25,9 @@ EE14Lib_Err timer_config_freerun(TIM_TypeDef* const timer, const unsigned int pr
 {
     enable_timer(timer);
 
+    //enable DMA request trigger on timer update
+    timer->DIER |= TIM_DIER_UDE;
+
     // Top-level control registers are fine with defaults (except for turning it on, later)
 
     timer->PSC = prescaler;
@@ -47,6 +50,10 @@ EE14Lib_Err timer_reset_freerun(TIM_TypeDef* const timer)
     timer->EGR |= TIM_EGR_UG;
 
     return EE14Lib_Err_OK;
+}
+
+EE14Lib_Err timer_set_ARR(TIM_TypeDef* const timer, uint16_t reload){
+    timer->ARR = reload;
 }
 
 uint32_t timer_get_count(TIM_TypeDef* const timer)
