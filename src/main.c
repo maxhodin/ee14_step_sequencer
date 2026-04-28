@@ -67,6 +67,115 @@ uint32_t phase_step;
 typedef enum {a,as,b,c,cs,d,ds,e,f,fs,g,gs} NOTE;
 const uint32_t note_phase_LUT[12] = {45960056,48692591,51588075,54655908,57906538,61349364,64996921,68861744,72957412,77295414,81891420,86761097};
 
+//Set up interrupt for when clock line goes low (PA0)
+//PA1 reads bits (DATA) (Input with pull up)
+
+//Read low start bit
+//Collect 8 data bits
+//Read parity bit (?) count num of 1s, high if even, low if odd
+//Read Stop Bit (High)
+volatile uint16_t ps2_shift = 0;
+volatile uint8_t ps2_bitcount = 0;
+
+volatile uint8_t ps2_data = 0;
+volatile uint8_t ps2_ready = 0;
+
+const char *ps2_codes[256][4] = {};
+
+void initialize_codes(){
+    for(int i = 0; i < 4; i++){
+        ps2_codes[28][i] = "A"; //A
+        ps2_codes[27][i] = "B"; //S
+        ps2_codes[35][i] = "C"; //D
+        ps2_codes[43][i] = "D"; //F
+        ps2_codes[52][i] = "E"; //G
+        ps2_codes[51][i] = "F"; //H
+        ps2_codes[59][i] = "G"; //J
+
+        ps2_codes[21][i] = "A#"; //Q
+        ps2_codes[29][i] = "B#"; //W
+        ps2_codes[36][i] = "C#"; //E
+        ps2_codes[45][i] = "D#"; //R
+        ps2_codes[44][i] = "E#"; //T
+        ps2_codes[53][i] = "F#"; //Y
+        ps2_codes[60][i] = "G#"; //U
+
+        ps2_codes[26][i] = "Ab"; //Z
+        ps2_codes[34][i] = "Bb"; //X
+        ps2_codes[33][i] = "Cb"; //C
+        ps2_codes[42][i] = "Db"; //V
+        ps2_codes[50][i] = "Eb"; //B
+        ps2_codes[49][i] = "Fb"; //N
+        ps2_codes[58][i] = "Gb"; //M
+    }
+}
+
+void ps2_init(void)
+{
+    //Enable clocks
+    RCC->AHB2ENR |= RCC_AHB2ENR_GPIOAEN;
+    RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+
+    //A0 = CLK (input)
+    gpio_config_direction(A0, INPUT);
+    gpio_config_pullup(A0, PULL_UP);
+
+    //A1 = DATA (input)
+    gpio_config_direction(A1, INPUT);
+    gpio_config_pullup(A1, PULL_UP);
+
+    //Route EXTI0 → PA0
+    SYSCFG->EXTICR[0] &= ~SYSCFG_EXTICR1_EXTI0;
+    SYSCFG->EXTICR[0] |=  SYSCFG_EXTICR1_EXTI0_PA;
+
+    //Falling edge trigger
+    EXTI->FTSR1 |= EXTI_FTSR1_FT0;
+    EXTI->RTSR1 &= ~EXTI_RTSR1_RT0;
+
+    //Unmask interrupt
+    EXTI->IMR1 |= EXTI_IMR1_IM0;
+
+    //Clear pending
+    EXTI->PR1 |= EXTI_PR1_PIF0;
+
+    //Enable NVIC
+    NVIC_SetPriority(EXTI0_IRQn, 1);
+    NVIC_EnableIRQ(EXTI0_IRQn);
+    initialize_codes();
+}
+
+void EXTI0_IRQHandler(void)
+{
+    if (EXTI->PR1 & EXTI_PR1_PIF0)
+    {
+        //clear interrupt
+        EXTI->PR1 |= EXTI_PR1_PIF0;
+        //read DATA line
+        uint8_t bit = gpio_read(A1);
+
+        //Shift in bit (LSB first)
+        ps2_shift |= (bit << ps2_bitcount);
+        ps2_bitcount++;
+
+        if (ps2_bitcount == 11)
+        {
+            //Optional frame validation
+            uint8_t start = ps2_shift & 1;
+            uint8_t stop  = (ps2_shift >> 10) & 1;
+
+            if (start == 0 && stop == 1)
+            {
+                ps2_data = (ps2_shift >> 1) & 0xFF;
+                ps2_ready = 1;
+            }
+
+            //Reset for next frame
+            ps2_shift = 0;
+            ps2_bitcount = 0;
+        }
+    }
+}
+
 // Here write half transfer and FT
 void DMA1_Channel3_IRQHandler(void) {
     // Handle Half transfer
@@ -108,6 +217,7 @@ int _write(int file, char *data, int len) {
 }
 
 int main(){
+    
     //RCC-> CR[7:4] == 1011 for maximum 48 MHz
     uint32_t oldClk = RCC->CR;
     oldClk |= 0b1011 << 4;
@@ -124,16 +234,22 @@ int main(){
     while(!(RCC->CR & RCC_CR_MSIRDY));
     
     host_serial_init(9600);
-
+    ps2_init();
 
     DAC_TIM6_Init(41118);
     dma_dac_config(512);
     dma_set_memaddr(sound_buffer);
     dma_enable();
 
-    phase_step = note_phase_LUT[0]*2; // times octave
+    int octave = 1;
+    phase_step = note_phase_LUT[0]*octave; // times octave
     while(1){
-        
+        if(ps2_ready){
+            ps2_ready = 0;
+            uint8_t code = ps2_data;
+
+            char *out = ps2_codes[(int)ps2_data][octave];
+        }
     }
     return 0;
 }
