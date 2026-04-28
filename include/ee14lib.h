@@ -62,9 +62,11 @@ unsigned int adc_read_single(void);
 
 EE14Lib_Err dac_config_single(int alignment_mode);
 EE14Lib_Err dac_write(int val);
+void dac_tim6trig_init(uint32_t sample_rate);
 
-E14Lib_Err dma_dac_config();
+EE14Lib_Err dma_dac_config(uint16_t len_buffer);
 EE14Lib_Err dma_set_memaddr(uint8_t *buffer);
+EE14Lib_Err dma_enable();
 
 void host_serial_init(const unsigned int baud);
 void serial_write(USART_TypeDef *USARTx, const char *buffer, int len);

@@ -32,6 +32,9 @@ EE14Lib_Err timer_config_freerun(TIM_TypeDef* const timer, const unsigned int pr
 
     timer->PSC = prescaler;
 
+    // to avoid dma overload, set ARR != 0
+    timer->ARR = 543;
+
     // Force an update event so the prescaler gets loaded and timer resets
     timer->EGR |= TIM_EGR_UG;
 
@@ -54,6 +57,7 @@ EE14Lib_Err timer_reset_freerun(TIM_TypeDef* const timer)
 
 EE14Lib_Err timer_set_ARR(TIM_TypeDef* const timer, uint16_t reload){
     timer->ARR = reload;
+    return EE14Lib_Err_OK;
 }
 
 uint32_t timer_get_count(TIM_TypeDef* const timer)

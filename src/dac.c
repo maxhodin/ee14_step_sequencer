@@ -44,7 +44,7 @@ static void dac_wakeup(void){
 //    2: 12-bit right alignment
 EE14Lib_Err dac_config_single(int alignment_mode){
     // if DAC is sleeping, wake up
-    if(!(RCC->AHB1ENR & RCC_APB1ENR1_DAC1EN)){
+    if(!(RCC->APB1ENR1 & RCC_APB1ENR1_DAC1EN)){
         dac_wakeup();
     }
 
@@ -79,8 +79,8 @@ EE14Lib_Err dac_config_single(int alignment_mode){
     DAC1->CR |= DAC_CR_TEN1;
 
     //100 in TSEL[2:0] is TIM2 trigger
-    DAC1->CR |= 1 << 5;
-    DAC1->CR &= 0b00 << 3; 
+    DAC1->CR &= (0b111 << 3);
+    DAC1->CR |= 0b100 << 3;
 
     //enable the DAC
     DAC1->CR |= DAC_CR_EN1;
@@ -105,4 +105,30 @@ EE14Lib_Err dac_write(int val){
     //write val to data_ptr's register
     *data_ptr = val;
     return EE14Lib_Err_OK;
+}
+
+// inits the dac for tim6 based triggers and DMA data feeding
+// no return
+// param: sample rate in Hz. Should probably be something like 44118
+void dac_tim6trig_init(uint32_t sample_rate)
+{
+    // clock gating reenable in case theyre not
+    RCC->APB1ENR1 |= RCC_APB1ENR1_DAC1EN;
+    RCC->APB1ENR1 |= RCC_APB1ENR1_TIM6EN;
+    RCC->AHB2ENR  |= RCC_AHB2ENR_GPIOAEN;
+
+    // init pin mode in case it wasn't
+    GPIOA->MODER  |=  (3U << GPIO_MODER_MODE4_Pos);  // 11 = analog
+    GPIOA->PUPDR  &= ~(3U << GPIO_PUPDR_PUPD4_Pos);  // no pull
+
+
+    TIM6->PSC  = 0; // can change if necessary but i think that will hurt our performance
+    TIM6->ARR  = (SystemCoreClock / sample_rate) - 1;
+    TIM6->CR2 |= TIM_CR2_MMS_1;   // MMS = 010: Update -> TRGO
+    TIM6->CR1 |= TIM_CR1_CEN;
+
+    DAC1->CR = DAC_CR_DMAEN1  |   // enable DMA request
+               DAC_CR_TEN1    |   // trigger enable
+               (0U << DAC_CR_TSEL1_Pos) |  // TSEL = 000 = TIM6 on L432
+               DAC_CR_EN1;        // enable CH1
 }
