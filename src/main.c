@@ -1,6 +1,11 @@
 #include "ee14lib.h"
 #include <string.h>
 
+#define AUDIO_HALF 64
+#define AUDIO_LEN  128
+#define NUM_NOTES 7
+
+
 // Lookup table for waveforms
 
 // SINE is a sine wave
@@ -56,9 +61,13 @@ const uint8_t exp_pulse_LUT[64] = {
       4,   2,   1,   0,   0,   0,   0,   0
 };
 
-// buffer with two 256 sample halves.
-uint8_t sound_buffer[512];
+// buffer with two sample halves.
+uint8_t sound_buffer[AUDIO_LEN];
 uint16_t write_idx = 0;
+
+
+// uint32_t phase_accumulator_arr[NUM_NOTES] = {0};
+// volatile uint8_t note_active[NUM_NOTES] = {0};
 
 uint32_t phase_accumulator = 0;
 uint32_t phase_step;
@@ -74,13 +83,21 @@ const uint32_t note_phase_LUT[12] = {45960056,48692591,51588075,54655908,5790653
 //Collect 8 data bits
 //Read parity bit (?) count num of 1s, high if even, low if odd
 //Read Stop Bit (High)
+
 volatile uint16_t ps2_shift = 0;
 volatile uint8_t ps2_bitcount = 0;
 
 volatile uint8_t ps2_data = 0;
 volatile uint8_t ps2_ready = 0;
+volatile bool break_seen = false;
 
 const char *ps2_codes[256][4] = {};
+
+
+volatile bool note_on = false;
+volatile int8_t current_note = -1;
+
+int8_t ps2_note_map[256];
 
 void initialize_codes(){
     for(int i = 0; i < 4; i++){
@@ -92,23 +109,46 @@ void initialize_codes(){
         ps2_codes[51][i] = "F"; //H
         ps2_codes[59][i] = "G"; //J
 
-        ps2_codes[21][i] = "A#"; //Q
-        ps2_codes[29][i] = "B#"; //W
-        ps2_codes[36][i] = "C#"; //E
-        ps2_codes[45][i] = "D#"; //R
-        ps2_codes[44][i] = "E#"; //T
-        ps2_codes[53][i] = "F#"; //Y
-        ps2_codes[60][i] = "G#"; //U
+        // ps2_codes[21][i] = "A#"; //Q
+        // ps2_codes[29][i] = "B#"; //W
+        // ps2_codes[36][i] = "C#"; //E
+        // ps2_codes[45][i] = "D#"; //R
+        // ps2_codes[44][i] = "E#"; //T
+        // ps2_codes[53][i] = "F#"; //Y
+        // ps2_codes[60][i] = "G#"; //U
 
-        ps2_codes[26][i] = "Ab"; //Z
-        ps2_codes[34][i] = "Bb"; //X
-        ps2_codes[33][i] = "Cb"; //C
-        ps2_codes[42][i] = "Db"; //V
-        ps2_codes[50][i] = "Eb"; //B
-        ps2_codes[49][i] = "Fb"; //N
-        ps2_codes[58][i] = "Gb"; //M
+        // ps2_codes[26][i] = "Ab"; //Z
+        // ps2_codes[34][i] = "Bb"; //X
+        // ps2_codes[33][i] = "Cb"; //C
+        // ps2_codes[42][i] = "Db"; //V
+        // ps2_codes[50][i] = "Eb"; //B
+        // ps2_codes[49][i] = "Fb"; //N
+        // ps2_codes[58][i] = "Gb"; //M
     }
 }
+
+void initialize_note_map(void){
+    for(int i = 0; i < 256; i++){
+        ps2_note_map[i] = -1;
+    }
+
+    // white-key row
+    ps2_note_map[28] = a;   // A key -> A note
+    ps2_note_map[27] = b;   // S key -> B note
+    ps2_note_map[35] = c;   // D key -> C note
+    ps2_note_map[43] = d;   // F key -> D note
+    ps2_note_map[52] = e;   // G key -> E note
+    ps2_note_map[51] = f;   // H key -> F note
+    ps2_note_map[59] = g;   // J key -> G note
+
+    // // sharp row
+    // ps2_note_map[21] = as;  // Q key -> A#
+    // ps2_note_map[36] = cs;  // E key -> C#
+    // ps2_note_map[45] = ds;  // R key -> D#
+    // ps2_note_map[53] = fs;  // Y key -> F#
+    // ps2_note_map[60] = gs;  // U key -> G#
+}
+
 
 void ps2_init(void)
 {
@@ -117,11 +157,11 @@ void ps2_init(void)
     RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
 
     //A0 = CLK (input)
-    gpio_config_direction(A0, INPUT);
+    gpio_config_mode(A0, INPUT);
     gpio_config_pullup(A0, PULL_UP);
 
     //A1 = DATA (input)
-    gpio_config_direction(A1, INPUT);
+    gpio_config_mode(A1, INPUT);
     gpio_config_pullup(A1, PULL_UP);
 
     //Route EXTI0 → PA0
@@ -139,9 +179,10 @@ void ps2_init(void)
     EXTI->PR1 |= EXTI_PR1_PIF0;
 
     //Enable NVIC
-    NVIC_SetPriority(EXTI0_IRQn, 1);
+    NVIC_SetPriority(EXTI0_IRQn, 0);
     NVIC_EnableIRQ(EXTI0_IRQn);
     initialize_codes();
+    initialize_note_map();
 }
 
 void EXTI0_IRQHandler(void)
@@ -176,34 +217,32 @@ void EXTI0_IRQHandler(void)
     }
 }
 
-// Here write half transfer and FT
-void DMA1_Channel3_IRQHandler(void) {
-    // Handle Half transfer
-    if (DMA1->ISR & DMA_ISR_HTIF3) {
-        DMA1->IFCR |= DMA_IFCR_CHTIF3; // Clear the flag
-        for (int i = 0; i < 256; i++) {
-            phase_accumulator += phase_step;
-            
-            // turn 32 bits to 6 bits by shifting by 26
-            uint8_t index = (uint32_t)(phase_accumulator >> 26);
-            
-            // 3. Write to the DMA buffer
-            sound_buffer[i] = sine_LUT[index];
-        }
 
-    }
-    // Handle Complete Transfer
-    if (DMA1->ISR & DMA_ISR_TCIF3) {
-        DMA1->IFCR |= DMA_IFCR_CTCIF3; // Clear the flag
-        for (int i = 0; i < 256; i++) {
-            phase_accumulator += phase_step;
-            
-            // turn 32 bits to 6 bits by shifting by 26
-            uint8_t index = (uint32_t)(phase_accumulator >> 26);
-            
-            //Write to the DMA buffer
-            sound_buffer[i+256] = sine_LUT[index];
+void fill_audio_half(int start){
+    if(!note_on){
+        for(int i = 0; i < AUDIO_HALF; i++){
+            sound_buffer[start + i] = 128;
         }
+        return;
+    }
+
+    for(int i = 0; i < AUDIO_HALF; i++){
+        phase_accumulator += phase_step;
+        uint8_t index = phase_accumulator >> 26;
+        sound_buffer[start + i] = sine_LUT[index];
+    }
+}
+
+
+void DMA1_Channel3_IRQHandler(void) {
+    if (DMA1->ISR & DMA_ISR_HTIF3) {
+        DMA1->IFCR |= DMA_IFCR_CHTIF3;
+        fill_audio_half(0);
+    }
+
+    if (DMA1->ISR & DMA_ISR_TCIF3) {
+        DMA1->IFCR |= DMA_IFCR_CTCIF3;
+        fill_audio_half(AUDIO_HALF);
     }
 }
 
@@ -215,6 +254,11 @@ int _write(int file, char *data, int len) {
     serial_write(USART2, data, len);
     return len;
 }
+
+
+
+
+
 
 int main(){
     
@@ -236,20 +280,94 @@ int main(){
     host_serial_init(9600);
     ps2_init();
 
-    DAC_TIM6_Init(41118);
-    dma_dac_config(512);
+    dac_tim6trig_init(41118);
+    dma_dac_config(AUDIO_LEN);
     dma_set_memaddr(sound_buffer);
     dma_enable();
 
     int octave = 1;
-    phase_step = note_phase_LUT[0]*octave; // times octave
+    phase_step = note_phase_LUT[0] * octave; // times octave
     while(1){
         if(ps2_ready){
-            ps2_ready = 0;
+            ps2_ready = false;
+
             uint8_t code = ps2_data;
 
-            char *out = ps2_codes[(int)ps2_data][octave];
+            // PS2 ends 0xF0 before a release code
+            if(code == 0xF0){
+                break_seen = true;
+            }
+            else{
+                int8_t note = ps2_note_map[code];
+
+                if(note >= 0){
+                    const char *out = ps2_codes[code][0];
+
+                    if(out == 0){
+                        out = "?";
+                    }
+
+                    if(break_seen){
+                        break_seen = false;
+
+
+                        if(note == current_note){
+                            note_on = false;
+                            phase_step = 0;
+                        }
+
+                        printf("Released: code=%d, note=%s\n", code, out);
+                    }
+                    else{
+                        current_note = note;
+                        phase_step = note_phase_LUT[note];
+                        note_on = true;
+
+                        printf("Pressed: code=%d, note=%s\n", code, out);
+                    }
+                }
+                else{
+                    // unknown key 
+                    break_seen = false;
+                }
+            }
         }
     }
     return 0;
 }
+
+
+
+
+
+// // Here write half transfer and FT
+// void DMA1_Channel3_IRQHandler(void) {
+//     // Handle Half transfer
+//     if (DMA1->ISR & DMA_ISR_HTIF3) {
+//         DMA1->IFCR |= DMA_IFCR_CHTIF3; // Clear the flag
+//         for (int i = 0; i < 256; i++) {
+//             phase_accumulator += phase_step;
+            
+//             // turn 32 bits to 6 bits by shifting by 26
+//             uint8_t index = (uint32_t)(phase_accumulator >> 26);
+            
+//             // 3. Write to the DMA buffer
+//             sound_buffer[i] = sine_LUT[index];
+//         }
+
+//     }
+//     // Handle Complete Transfer
+//     if (DMA1->ISR & DMA_ISR_TCIF3) {
+//         DMA1->IFCR |= DMA_IFCR_CTCIF3; // Clear the flag
+//         for (int i = 0; i < 256; i++) {
+//             phase_accumulator += phase_step;
+            
+//             // turn 32 bits to 6 bits by shifting by 26
+//             uint8_t index = (uint32_t)(phase_accumulator >> 26);
+            
+//             //Write to the DMA buffer
+//             sound_buffer[i+256] = sine_LUT[index];
+//         }
+//     }
+// }
+
