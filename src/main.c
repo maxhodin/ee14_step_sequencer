@@ -267,7 +267,7 @@ void sound_type(uint8_t code){
 void change_octave(uint8_t code){
     if(code == 0x16) {octave = 1;}
     else if(code==0x1E) {octave = 2;}
-    else {octave = 4;}
+    else {octave = 4;} // n^3-1
 }
 
 
@@ -299,10 +299,13 @@ int main(){
     uint32_t last_screen_tick = 0;
     uint8_t screen_buffer[AUDIO_LEN];
 
+    gpio_config_mode(D11, OUTPUT);
+    gpio_config_mode(D12,OUTPUT);
 
     phase_step = note_phase_LUT[0] * octave; // times octave
     while(1){
-
+        gpio_write(D11,current_waveform >> 1);
+        gpio_write(D12,current_waveform & 0b01);
         if((audio_tick - last_screen_tick) > 32){
             // keep track of how often we are updating the buffer. 
             last_screen_tick = audio_tick;
