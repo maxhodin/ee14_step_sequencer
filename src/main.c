@@ -96,7 +96,7 @@ const char *ps2_codes[256][4] = {};
 
 volatile bool note_on = false;
 volatile int8_t current_note = -1;
-
+int audio_tick = 0;
 int8_t ps2_note_map[256];
 
 void initialize_codes(){
@@ -235,6 +235,7 @@ void fill_audio_half(int start){
 
 
 void DMA1_Channel3_IRQHandler(void) {
+    audio_tick++;
     if (DMA1->ISR & DMA_ISR_HTIF3) {
         DMA1->IFCR |= DMA_IFCR_CHTIF3;
         fill_audio_half(0);
@@ -285,9 +286,25 @@ int main(){
     dma_set_memaddr(sound_buffer);
     dma_enable();
 
+    uint32_t last_screen_tick = 0;
+    uint8_t screen_buffer[AUDIO_LEN];
+
     int octave = 1;
     phase_step = note_phase_LUT[0] * octave; // times octave
     while(1){
+
+        if((audio_tick - last_screen_tick) > 32){
+            // keep track of how often we are updating the buffer. 
+            last_screen_tick = audio_tick;
+
+            for(int i = 0; i < AUDIO_LEN; i++){
+                // update the buffer we can send to the screen. 
+                screen_buffer[i] = sound_buffer[i];
+            }
+
+        }
+
+
         if(ps2_ready){
             ps2_ready = false;
 
@@ -370,4 +387,3 @@ int main(){
 //         }
 //     }
 // }
-
