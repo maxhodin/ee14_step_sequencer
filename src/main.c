@@ -69,12 +69,13 @@ uint16_t write_idx = 0;
 // uint32_t phase_accumulator_arr[NUM_NOTES] = {0};
 // volatile uint8_t note_active[NUM_NOTES] = {0};
 
-uint32_t phase_accumulator = 0;
-uint32_t phase_step;
+volatile uint32_t phase_accumulator = 0;
+volatile uint32_t phase_step;
+volatile uint8_t* waveforms[4] = {sine_LUT, ramp_LUT, triangle_LUT, exp_pulse_LUT};
+volatile uint8_t current_waveform = 0;
 
-
-typedef enum {a,as,b,c,cs,d,ds,e,f,fs,g,gs} NOTE;
-const uint32_t note_phase_LUT[12] = {45960056,48692591,51588075,54655908,57906538,61349364,64996921,68861744,72957412,77295414,81891420,86761097};
+typedef enum {c,cs,d,ds,e,f,fs,g,gs,a,as,b,c2} NOTE;
+const uint32_t note_phase_LUT[13] = {54655908,57906538,61349364,64996921,68861744,72957412,77295414,81891420,86761097,91920112,97385182,103176150,109311816};
 
 //Set up interrupt for when clock line goes low (PA0)
 //PA1 reads bits (DATA) (Input with pull up)
@@ -91,62 +92,50 @@ volatile uint8_t ps2_data = 0;
 volatile uint8_t ps2_ready = 0;
 volatile bool break_seen = false;
 
-const char *ps2_codes[256][4] = {};
+
 
 
 volatile bool note_on = false;
 volatile int8_t current_note = -1;
-int audio_tick = 0;
+volatile int audio_tick = 0;
 int8_t ps2_note_map[256];
+volatile int octave = 1;
 
-void initialize_codes(){
-    for(int i = 0; i < 4; i++){
-        ps2_codes[28][i] = "A"; //A
-        ps2_codes[27][i] = "B"; //S
-        ps2_codes[35][i] = "C"; //D
-        ps2_codes[43][i] = "D"; //F
-        ps2_codes[52][i] = "E"; //G
-        ps2_codes[51][i] = "F"; //H
-        ps2_codes[59][i] = "G"; //J
-
-        // ps2_codes[21][i] = "A#"; //Q
-        // ps2_codes[29][i] = "B#"; //W
-        // ps2_codes[36][i] = "C#"; //E
-        // ps2_codes[45][i] = "D#"; //R
-        // ps2_codes[44][i] = "E#"; //T
-        // ps2_codes[53][i] = "F#"; //Y
-        // ps2_codes[60][i] = "G#"; //U
-
-        // ps2_codes[26][i] = "Ab"; //Z
-        // ps2_codes[34][i] = "Bb"; //X
-        // ps2_codes[33][i] = "Cb"; //C
-        // ps2_codes[42][i] = "Db"; //V
-        // ps2_codes[50][i] = "Eb"; //B
-        // ps2_codes[49][i] = "Fb"; //N
-        // ps2_codes[58][i] = "Gb"; //M
-    }
-}
+volatile bool sine = true;
+volatile bool triangle = false;
+volatile bool ramp = false;
+volatile bool exp_pulse = false;
 
 void initialize_note_map(void){
     for(int i = 0; i < 256; i++){
         ps2_note_map[i] = -1;
     }
 
-    // white-key row
-    ps2_note_map[28] = a;   // A key -> A note
-    ps2_note_map[27] = b;   // S key -> B note
-    ps2_note_map[35] = c;   // D key -> C note
-    ps2_note_map[43] = d;   // F key -> D note
-    ps2_note_map[52] = e;   // G key -> E note
-    ps2_note_map[51] = f;   // H key -> F note
-    ps2_note_map[59] = g;   // J key -> G note
+    // old white keys
+    // ps2_note_map[28] = a;   // A key -> A note
+    // ps2_note_map[27] = b;   // S key -> B note
+    // ps2_note_map[35] = c;   // D key -> C note
+    // ps2_note_map[43] = d;   // F key -> D note
+    // ps2_note_map[52] = e;   // G key -> E note
+    // ps2_note_map[51] = f;   // H key -> F note
+    // ps2_note_map[59] = g;   // J key -> G note
 
-    // // sharp row
-    // ps2_note_map[21] = as;  // Q key -> A#
-    // ps2_note_map[36] = cs;  // E key -> C#
-    // ps2_note_map[45] = ds;  // R key -> D#
-    // ps2_note_map[53] = fs;  // Y key -> F#
-    // ps2_note_map[60] = gs;  // U key -> G#
+    // new white keys
+    ps2_note_map[28] = c;   // A key -> C
+    ps2_note_map[27] = d;   // S key -> D
+    ps2_note_map[35] = e;   // D key -> E
+    ps2_note_map[43] = f;   // F key -> F
+    ps2_note_map[52] = g;   // G key -> G
+    ps2_note_map[51] = a;   // H key -> A
+    ps2_note_map[59] = b;   // J key -> B
+    ps2_note_map[66] = c2; // K key -> C
+
+    // black keys
+    ps2_note_map[29] = cs;  // W key -> C#
+    ps2_note_map[36] = ds;  // E key -> D#
+    ps2_note_map[44] = fs;  // T key -> F#
+    ps2_note_map[53] = gs;  // Y key -> G#
+    ps2_note_map[60] = as;  // U key -> A#
 }
 
 
@@ -181,7 +170,6 @@ void ps2_init(void)
     //Enable NVIC
     NVIC_SetPriority(EXTI0_IRQn, 0);
     NVIC_EnableIRQ(EXTI0_IRQn);
-    initialize_codes();
     initialize_note_map();
 }
 
@@ -227,9 +215,18 @@ void fill_audio_half(int start){
     }
 
     for(int i = 0; i < AUDIO_HALF; i++){
-        phase_accumulator += phase_step;
+        phase_accumulator += phase_step*octave;
         uint8_t index = phase_accumulator >> 26;
-        sound_buffer[start + i] = sine_LUT[index];
+        sound_buffer[start + i] = ramp_LUT[index];
+        if(sine){
+            sound_buffer[start + i] = sine_LUT[index];
+        }else if(triangle){
+            sound_buffer[start + i] = triangle_LUT[index];
+        }else if(exp_pulse){
+            sound_buffer[start + i] = exp_pulse_LUT[index];
+        }else if(ramp){
+            sound_buffer[start + i] = ramp_LUT[index];
+        }
     }
 }
 
@@ -256,9 +253,22 @@ int _write(int file, char *data, int len) {
     return len;
 }
 
+void sound_type(uint8_t code){
+    triangle = false;
+    ramp = false;
+    exp_pulse = false;
+    sine = false;
+    if(code == 0x1A ){ sine = true; }
+    else if(code == 0x22 ){ triangle = true; }
+    else if(code == 0x21 ){ ramp = true; }
+    else if(code == 0x2A ){ exp_pulse = true; }
+}
 
-
-
+void change_octave(uint8_t code){
+    if(code == 0x16) {octave = 1;}
+    else if(code==0x1E) {octave = 2;}
+    else {octave = 4;}
+}
 
 
 int main(){
@@ -289,7 +299,7 @@ int main(){
     uint32_t last_screen_tick = 0;
     uint8_t screen_buffer[AUDIO_LEN];
 
-    int octave = 1;
+
     phase_step = note_phase_LUT[0] * octave; // times octave
     while(1){
 
@@ -309,38 +319,40 @@ int main(){
             ps2_ready = false;
 
             uint8_t code = ps2_data;
-
-            // PS2 ends 0xF0 before a release code
-            if(code == 0xF0){
-                break_seen = true;
+            //printf("Received PS2 code: %02X\n", code);
+            if(code == 0x1A || code == 0x22 || code == 0x21 || code == 0x2A){
+                sound_type(code);
             }
+            else if(code==0x16 || code == 0x1E || code == 0x26){
+                change_octave(code);
+                //printf("Changed octave\n");
+            }
+            // I added this because there was somehow no mechanism for break_seen to be set high. This sometimes creates holding errors though
+            else if(code == 0xF0) break_seen = 1;
+ 
             else{
                 int8_t note = ps2_note_map[code];
 
                 if(note >= 0){
-                    const char *out = ps2_codes[code][0];
-
-                    if(out == 0){
-                        out = "?";
-                    }
+                    
 
                     if(break_seen){
                         break_seen = false;
 
-
                         if(note == current_note){
                             note_on = false;
                             phase_step = 0;
+                            //printf("Attempted to turn note off \n");
                         }
 
-                        printf("Released: code=%d, note=%s\n", code, out);
+                        //printf("Released: code=%d, note=%s\n", code, out);
                     }
                     else{
                         current_note = note;
                         phase_step = note_phase_LUT[note];
                         note_on = true;
 
-                        printf("Pressed: code=%d, note=%s\n", code, out);
+                        //printf("Pressed: code=%d, note=%s\n", code, out);
                     }
                 }
                 else{
